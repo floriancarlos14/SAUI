@@ -1,0 +1,26 @@
+services:
+  saui-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saui-engine:gpu
+    container_name: saui-engine
+    ports:
+      - "8000:8000"
+    environment:
+      SAUI_CONVERSION_TIMEOUT: "1800"
+      SAUI_DIFFUSION_STEPS: "30"
+      SAUI_FP16: "True"
+    volumes:
+      - saui-model-cache:/root/.cache
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  saui-model-cache:
