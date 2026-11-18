@@ -6,7 +6,7 @@ echo ==========================================
 echo SAUI - Local Windows CPU Engine
 echo ==========================================
 echo This uses CPU mode and does not require an NVIDIA GPU or paid server.
-echo First setup downloads Python packages and public model files.
+echo First setup downloads Python packages and the Seed-VC code. Model weights download on first conversion.
 echo Keep an internet connection and several GB of free disk space.
 echo.
 
