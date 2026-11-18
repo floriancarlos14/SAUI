@@ -215,7 +215,7 @@ class _SauiHomeState extends State<SauiHome> {
 
   Widget _featureCard(String title, String subtitle, Color color, IconData icon) => Container(
     width: 155, margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.all(15),
-    decoration: BoxDecoration(gradient: LinearGradient(colors: [color, color.withValues(alpha: .48)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18)),
+    decoration: BoxDecoration(gradient: LinearGradient(colors: [color, color.withOpacity(.48)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Icon(icon, size: 30), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
@@ -255,7 +255,7 @@ class _SauiHomeState extends State<SauiHome> {
     color: panel, margin: const EdgeInsets.only(bottom: 11),
     child: ListTile(
       contentPadding: const EdgeInsets.all(12),
-      leading: CircleAvatar(backgroundColor: accent.withValues(alpha: .18), child: Icon(icon, color: accent)),
+      leading: CircleAvatar(backgroundColor: accent.withOpacity(.18), child: Icon(icon, color: accent)),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text(subtitle, style: const TextStyle(color: Colors.white60)),
       trailing: const Icon(Icons.chevron_right), onTap: onTap,
