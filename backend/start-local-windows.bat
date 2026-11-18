@@ -59,9 +59,10 @@ if not exist ".saui-deps-installed" (
   if errorlevel 1 goto failed
   python -m pip install -r seed-vc\requirements-saui-cpu.txt
   if errorlevel 1 goto failed
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content seed-vc\inference.py -Raw).Replace('torch_dtype=torch.float16','torch_dtype=torch.float32').Replace('hubert_model = hubert_model.half()','hubert_model = hubert_model.float()').Replace('xlsr_model = wav2vec_model.half()','xlsr_model = wav2vec_model.float()').Replace('ori_inputs.input_values.half()','ori_inputs.input_values.float()') | Set-Content seed-vc\inference.py"
   python -m pip install -r requirements.txt
   if errorlevel 1 goto failed
-  echo installed>" .saui-deps-installed"
+  echo installed> .saui-deps-installed
 )
 
 echo [5/5] Starting SAUI local API...
