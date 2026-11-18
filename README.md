@@ -1,53 +1,74 @@
-# SAUI — Singing Voice Conversion
+# SAUI — AI Music Community & Streaming Platform
 
-SAUI is an open-source singing voice conversion app. The Flutter client accepts a song and a permitted voice reference; the FastAPI backend runs the Seed-VC singing-voice model and returns a WAV file.
+SAUI is being developed as a free-to-listen AI music community with optional Premium listening, creator profiles, music publishing, playlists, social features, and an AI Studio. The existing singing voice-conversion tool is one feature inside AI Studio, not the whole product.
 
-## Included
+## Current repository status
 
-- Flutter interface for selecting the song and voice reference.
-- FastAPI `/convert` endpoint with upload validation.
-- Windows CPU setup launcher (`backend/start-local-windows.bat`).
-- Bundled ffmpeg dependency for MP3/M4A/FLAC/OGG decoding.
-- Seed-VC F0-conditioned model output at 44.1 kHz.
+### Flutter app
+- Spotify-inspired SAUI navigation shell: Home, Search, Your Library, Create, Profile.
+- Sample discovery cards, sample tracks and a mini-player interface.
+- AI Studio entry points for song upload, voice conversion and planned AI music generation.
+- This Flutter screen is currently a UI prototype: sample tracks do not contain playable audio, and the Flutter app is not yet connected to the new community API.
 
-## Run on Windows (no paid server or NVIDIA GPU required)
+### FastAPI community API (new MVP backend)
+- Account registration and login with salted PBKDF2 password hashes and signed bearer sessions.
+- Audio upload (MP3, WAV, M4A, FLAC, OGG; 50 MB per track).
+- Public track catalog/search and audio-file streaming endpoint.
+- Likes, comments, creator follows, playlists and playlist tracks.
+- Creator dashboard metrics: track count, plays, likes and followers.
+- SQLite database and local media-file storage.
+
+## API routes
+
+Base URL: `http://127.0.0.1:8000`
+
+- `GET /health` — conversion service health
+- `GET /api/health` — music platform health
+- `POST /api/auth/register` — create account (JSON: username, email, password; password minimum 10 characters)
+- `POST /api/auth/login` — sign in (JSON: email, password)
+- `GET /api/me` — current account (Bearer token)
+- `GET /api/tracks?q=&limit=30&offset=0` — browse/search tracks
+- `POST /api/tracks?title=...&genre=...&description=...` — upload audio as multipart field `audio` (Bearer token)
+- `GET /api/tracks/{track_id}` — track details
+- `GET /api/tracks/{track_id}/audio` — stream uploaded audio
+- `POST /api/tracks/{track_id}/like` — toggle like (Bearer token)
+- `GET /api/tracks/{track_id}/comments` and `POST /api/tracks/{track_id}/comments` — comments
+- `POST /api/users/{creator_id}/follow` — toggle follow (Bearer token)
+- `POST /api/playlists` and `GET /api/playlists` — create/list personal playlists
+- `POST /api/playlists/{playlist_id}/tracks/{track_id}` — add a track
+- `GET /api/playlists/{playlist_id}/tracks` — list playlist tracks
+- `GET /api/creator/dashboard` — creator metrics (Bearer token)
+
+For protected routes, send `Authorization: Bearer <access_token>`.
+
+## Run the local backend on Windows
+
+The current launcher starts the conversion API and the new music platform API together.
 
 Requirements:
 - Windows 10/11
-- Python 3.10 with the Python Launcher (`py`)
+- Python 3.10 and Python Launcher (`py`)
 - Git for Windows
-- Internet for one-time downloads of packages and public model weights
-- Several GB of free disk space
+- Internet for initial dependency/model downloads
+- Free disk space for packages, model files, database and uploaded audio
 
-Steps:
-1. Open the repository folder, then open `backend`.
-2. Double-click `start-local-windows.bat`.
-3. Wait for the first-time setup. It downloads Seed-VC, Python packages and model weights; this may take a while.
-4. Keep the command window open. The local API address is `http://127.0.0.1:8000`.
-5. Open the Flutter app on the same computer. Its default backend address is `http://localhost:8000`.
-6. Upload a short song and a voice reference, then press **Convert**. The result is saved as WAV.
+1. Open the repository's `backend` folder.
+2. Run `start-local-windows.bat`.
+3. Keep the terminal open while using the local API.
+4. Open `http://127.0.0.1:8000/docs` to inspect and test the API endpoints.
 
-The launcher creates an isolated `.venv`, installs CPU-only PyTorch, prepares Seed-VC's transformer paths for FP32 CPU inference, and starts the API. If setup fails, the first error in the command window is the diagnostic. You can run the launcher again after correcting that error.
+The API stores its SQLite database and uploaded tracks in `backend/data` by default. Set `SAUI_DATA_DIR` to a persistent writable directory before deployment. Set a long random `SAUI_TOKEN_SECRET` in the environment before using accounts beyond local testing. Do not expose the development default secret to the public internet.
 
-## Performance note
+## Important: what is not finished yet
 
-This is a local CPU compatibility path, not a fast conversion service. Seed-VC is a large neural model; on an older or low-memory computer, downloads and conversion can take a long time or run out of memory. A 2 GB legacy NVIDIA GPU is not suitable for the GPU Docker image. No paid server or per-conversion service is required for local use, but speed depends on the computer.
+This is an early backend MVP, not a finished Spotify-scale service. The Flutter client still needs to be connected to the API and real audio playback. The following are not implemented: hosted production database/object storage, moderation and copyright reporting, anti-fraud stream validation, advertisements, Premium billing, offline downloads, real creator revenue accounting, identity/tax checks and creator payouts. No one can currently earn money through SAUI, and the creator dashboard explicitly reports payouts as disabled.
 
-## Model and license
+Do not use this local SQLite/media-folder setup as a public production deployment. A public launch needs secure hosted infrastructure, backups, upload scanning, rate limits, content moderation, copyright/takedown procedures, privacy controls and payment-provider compliance.
 
-The conversion model is the third-party [Seed-VC project](https://github.com/Plachtaa/seed-vc), not a model trained by SAUI. Review its GPL-3.0 license and the licenses of downloaded model weights before redistributing SAUI. Use only voice recordings you have permission to use.
+## Voice conversion
 
-## Flutter web
+The conversion feature remains available through the existing `POST /convert` endpoint and Seed-VC integration. It is a separate AI Studio feature. It requires the local model setup and has not been verified end-to-end on every target device.
 
-From the repository's `app` directory:
+## Model and content rights
 
-```bash
-flutter pub get
-flutter run -d chrome
-```
-
-The default backend URL is `http://localhost:8000`. To use another backend, build with:
-
-```bash
-flutter build web --dart-define=SAUI_API_URL=http://127.0.0.1:8000
-```
+Seed-VC is a third-party project. Review its GPL-3.0 license and the licenses of downloaded model weights before redistribution. Users must upload music and voice recordings they own or have permission to use. SAUI must implement rights reporting and moderation before public launch.
