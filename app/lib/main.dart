@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -54,7 +55,6 @@ class _ConverterPageState extends State<ConverterPage> {
   String status = 'Add a song and a voice reference to get started.';
   double pitch = 0;
   double strength = 0.7;
-  String? outputUrl;
 
   Future<void> pickAudio(bool isVoice) async {
     final result = await FilePicker.platform.pickFiles(
@@ -71,7 +71,6 @@ class _ConverterPageState extends State<ConverterPage> {
       } else {
         song = picked;
       }
-      outputUrl = null;
       status = 'Files ready. Adjust settings, then tap Convert.';
     });
   }
@@ -80,8 +79,7 @@ class _ConverterPageState extends State<ConverterPage> {
     if (song == null || voice == null || busy) return;
     setState(() {
       busy = true;
-      outputUrl = null;
-      status = 'Sending audio to the SAUI backend…';
+      status = 'Sending audio to the SAUI conversion server…';
     });
     try {
       final request = http.MultipartRequest(
@@ -100,19 +98,34 @@ class _ConverterPageState extends State<ConverterPage> {
           voice!.bytes,
           filename: voice!.name,
         ));
+
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
-      final body = jsonDecode(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        setState(() => status = body['message']?.toString() ??
-            'The backend accepted the request.');
+      final contentType = response.headers['content-type'] ?? '';
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          contentType.contains('audio/wav')) {
+        await FileSaver.instance.saveFile(
+          name: 'saui_converted',
+          bytes: response.bodyBytes,
+          fileExtension: 'wav',
+          mimeType: MimeType.wav,
+        );
+        setState(() => status = 'Conversion finished. Your WAV file was saved.');
       } else {
-        setState(() => status = body['detail']?.toString() ??
-            'Conversion service returned ${response.statusCode}.');
+        String message = 'Conversion service returned ${response.statusCode}.';
+        try {
+          final body = jsonDecode(response.body);
+          message = body['detail']?.toString() ?? message;
+        } catch (_) {
+          // Keep the HTTP status message when the server response is not JSON.
+        }
+        setState(() => status = message);
       }
     } catch (e) {
       setState(() => status =
-          'Cannot reach the SAUI backend. The conversion server is not connected yet.');
+          'Could not complete the request. Check that the SAUI server is running and reachable.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -239,7 +252,7 @@ class _ConverterPageState extends State<ConverterPage> {
                     ? const SizedBox(width: 18, height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.auto_awesome),
-                label: Text(busy ? 'CONNECTING…' : 'CONVERT VOICE'),
+                label: Text(busy ? 'CONVERTING…' : 'CONVERT VOICE'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(54),
                   backgroundColor: const Color(0xFF7865E8),
@@ -255,7 +268,7 @@ class _ConverterPageState extends State<ConverterPage> {
                 child: Text(status, style: const TextStyle(color: Colors.white70)),
               ),
               const SizedBox(height: 24),
-              const Text('Output format: WAV / MP3 • Target sample rate: 44.1 kHz',
+              const Text('Output: WAV • 44.1 kHz singing-voice model',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white38, fontSize: 12)),
               const SizedBox(height: 20),
