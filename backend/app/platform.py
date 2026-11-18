@@ -5,11 +5,13 @@ Local MVP storage uses SQLite and a media/ directory. Set SAUI_DATA_DIR to persi
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 import time
 import uuid
 from pathlib import Path
+from contextlib import contextmanager
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
@@ -25,13 +27,21 @@ ALLOWED_AUDIO = {".mp3", ".wav", ".m4a", ".flac", ".ogg"}
 TOKEN_SECRET = os.getenv("SAUI_TOKEN_SECRET", "development-only-change-this-secret").encode()
 
 
+@contextmanager
 def db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -117,7 +127,7 @@ def current_user(authorization: Optional[str] = Header(default=None)):
 
 
 class RegisterBody(BaseModel):
-    username: str = Field(min_length=3, max_length=24, pattern=r"^[a-zA-Z0-9_]+$")
+    username: str = Field(min_length=3, max_length=24)
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=10, max_length=128)
 
@@ -153,8 +163,10 @@ def platform_health():
 @router.post("/auth/register")
 def register(body: RegisterBody):
     email = body.email.strip().lower()
-    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+    if not re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", email):
         raise HTTPException(422, "Enter a valid email address.")
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,24}", body.username):
+        raise HTTPException(422, "Username must be 3 to 24 letters, numbers or underscores.")
     user_id, now = str(uuid.uuid4()), int(time.time())
     try:
         with db() as c:
