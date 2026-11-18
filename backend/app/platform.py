@@ -335,3 +335,19 @@ def playlist_tracks(playlist_id: str, user=Depends(current_user)):
         rows = c.execute("""SELECT t.id,t.title,t.artist,t.genre,t.plays FROM playlist_tracks pt
           JOIN tracks t ON t.id=pt.track_id WHERE pt.playlist_id=? ORDER BY pt.position,t.created_at DESC""", (playlist_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+@router.get("/creator/dashboard")
+def creator_dashboard(user=Depends(current_user)):
+    with db() as c:
+        totals = c.execute("""SELECT COUNT(*) AS tracks, COALESCE(SUM(plays),0) AS plays
+          FROM tracks WHERE user_id=?""", (user["id"],)).fetchone()
+        likes = c.execute("""SELECT COUNT(*) AS total FROM likes
+          JOIN tracks ON tracks.id=likes.track_id WHERE tracks.user_id=?""", (user["id"],)).fetchone()["total"]
+        followers = c.execute("SELECT COUNT(*) AS total FROM follows WHERE followed_id=?", (user["id"],)).fetchone()["total"]
+        recent = c.execute("""SELECT id,title,plays,created_at FROM tracks
+          WHERE user_id=? ORDER BY created_at DESC LIMIT 10""", (user["id"],)).fetchall()
+    return {"tracks": totals["tracks"], "plays": totals["plays"], "likes": likes,
+            "followers": followers, "recent_tracks": [dict(r) for r in recent],
+            "earnings_status": "not_enabled",
+            "earnings_message": "Creator payouts are not enabled yet. No stream earnings are currently calculated."}
