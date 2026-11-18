@@ -4,13 +4,17 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import imageio_ffmpeg
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-app = FastAPI(title="SAUI Conversion API", version="0.2.0")
+# Bundle ffmpeg so librosa/audioread can decode MP3, M4A, FLAC and OGG on Windows.
+_ffmpeg_dir = str(Path(imageio_ffmpeg.get_ffmpeg_exe()).parent)
+os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
+app = FastAPI(title="SAUI Conversion API", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("SAUI_ALLOWED_ORIGINS", "*").split(","),
@@ -19,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MAX_FILE_BYTES = 30 * 1024 * 1024
+MAX_FILE_BYTES = 100 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
 SEED_VC_DIR = Path(os.getenv("SEED_VC_DIR", "/opt/seed-vc"))
 
@@ -32,6 +36,7 @@ async def health():
         "status": "online",
         "inference_ready": inference_script.is_file(),
         "engine": "Seed-VC singing voice conversion",
+        "device_mode": "cuda" if os.getenv("SAUI_FP16", "False").lower() == "true" else "cpu",
         "message": (
             "Seed-VC inference script found."
             if inference_script.is_file()
@@ -46,7 +51,7 @@ async def save_audio(upload: UploadFile, label: str, destination: Path) -> None:
         raise HTTPException(status_code=415, detail=f"{label}: unsupported audio format.")
     data = await upload.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail=f"{label}: file exceeds 30 MB.")
+        raise HTTPException(status_code=413, detail=f"{label}: file exceeds 100 MB.")
     if not data:
         raise HTTPException(status_code=400, detail=f"{label}: empty file.")
     destination.write_bytes(data)
@@ -66,10 +71,7 @@ async def convert(
 
     inference_script = SEED_VC_DIR / "inference.py"
     if not inference_script.is_file():
-        raise HTTPException(
-            status_code=503,
-            detail="Seed-VC runtime is not installed. Configure SEED_VC_DIR on a model server first.",
-        )
+        raise HTTPException(status_code=503, detail="Seed-VC runtime is not installed. Run the Windows setup launcher first.")
 
     workdir = Path(tempfile.mkdtemp(prefix="saui-"))
     source_path = workdir / f"source{Path(song.filename or 'song.wav').suffix.lower()}"
@@ -80,47 +82,34 @@ async def convert(
     try:
         await save_audio(song, "Song", source_path)
         await save_audio(voice_reference, "Voice reference", reference_path)
-
         command = [
-            os.getenv("PYTHON_EXECUTABLE", "python"),
-            str(inference_script),
-            "--source", str(source_path),
-            "--target", str(reference_path),
+            os.getenv("PYTHON_EXECUTABLE", "python"), str(inference_script),
+            "--source", str(source_path), "--target", str(reference_path),
             "--output", str(output_dir),
-            "--diffusion-steps", os.getenv("SAUI_DIFFUSION_STEPS", "30"),
+            "--diffusion-steps", os.getenv("SAUI_DIFFUSION_STEPS", "8"),
             "--length-adjust", "1.0",
             "--inference-cfg-rate", str(strength),
-            "--f0-condition", "True",
-            "--auto-f0-adjust", "False",
+            "--f0-condition", "True", "--auto-f0-adjust", "False",
             "--semi-tone-shift", str(pitch_shift),
             "--fp16", os.getenv("SAUI_FP16", "False"),
         ]
-
         try:
             completed = subprocess.run(
-                command,
-                cwd=str(SEED_VC_DIR),
-                capture_output=True,
-                text=True,
-                timeout=int(os.getenv("SAUI_CONVERSION_TIMEOUT", "1800")),
+                command, cwd=str(SEED_VC_DIR), capture_output=True,
+                text=True, timeout=int(os.getenv("SAUI_CONVERSION_TIMEOUT", "7200")),
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            raise HTTPException(status_code=504, detail="Conversion timed out. Try a shorter audio file.")
+            raise HTTPException(status_code=504, detail="Conversion timed out. Try a shorter audio clip.")
 
         if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout or "Unknown model error")[-2500:]
+            tail = (completed.stderr or completed.stdout or "Unknown model error")[-4000:]
             raise HTTPException(status_code=500, detail=f"Seed-VC failed: {tail}")
-
-        outputs = list(output_dir.glob("vc_*.wav"))
+        outputs = sorted(output_dir.glob("vc_*.wav"))
         if not outputs:
             raise HTTPException(status_code=500, detail="The model finished but did not produce a WAV file.")
-
-        result = outputs[0]
         return FileResponse(
-            path=result,
-            media_type="audio/wav",
-            filename="saui_converted.wav",
+            path=outputs[0], media_type="audio/wav", filename="saui_converted.wav",
             background=BackgroundTask(shutil.rmtree, workdir, ignore_errors=True),
         )
     except Exception:
