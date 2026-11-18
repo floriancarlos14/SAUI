@@ -10,11 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from app.platform import router as platform_router
+
 # Bundle ffmpeg so librosa/audioread can decode MP3, M4A, FLAC and OGG on Windows.
 _ffmpeg_dir = str(Path(imageio_ffmpeg.get_ffmpeg_exe()).parent)
 os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
 
-app = FastAPI(title="SAUI Conversion API", version="0.3.0")
+app = FastAPI(title="SAUI AI Music Platform API", version="0.4.0")
+app.include_router(platform_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("SAUI_ALLOWED_ORIGINS", "*").split(","),
